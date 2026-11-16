@@ -51,7 +51,6 @@ yarn-error.log*
 # Prisma
 *.db
 *.db-journal
-packages/db/generated/
 
 # IDEs
 .vscode/*

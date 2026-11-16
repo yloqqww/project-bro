@@ -1,0 +1,916 @@
+// Clinic Appointment and Medical Record Management System
+// Database Schema with RFID Integration
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "C:/Users/Ylo/AppData/Local/Temp/clinic-prisma-appointment-lifecycle-20261006"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// USER MANAGEMENT & AUTHENTICATION
+// ============================================================
+
+enum UserRole {
+  ADMIN
+  DOCTOR
+  RECEPTIONIST
+  PATIENT
+  NURSE
+}
+
+model User {
+  id                   String    @id @default(cuid())
+  email                String    @unique
+  password             String // Hashed password (use bcrypt)
+  role                 UserRole
+  isActive             Boolean   @default(true)
+  passwordActivatedAt  DateTime?
+  lastPasswordChangeAt DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  // Relations
+  patientProfile               PatientProfile?
+  doctorProfile                DoctorProfile?
+  staffProfile                 StaffProfile?
+  createdAppointments          Appointment[]             @relation("CreatedByUser")
+  medicalRecords               MedicalRecord[]           @relation("DoctorRecords")
+  finalizedMedicalRecords      MedicalRecord[]           @relation("FinalizedMedicalRecords")
+  archivedMedicalRecords       MedicalRecord[]           @relation("ArchivedMedicalRecords")
+  medicalRecordAttachments     MedicalRecordAttachment[] @relation("MedicalRecordAttachmentUploader")
+  prescriptions                Prescription[]            @relation("PrescribedByDoctor")
+  clinicalConversationsCreated ClinicalConversation[]    @relation("ClinicalConversationCreator")
+  clinicalMessagesSent         ClinicalMessage[]         @relation("ClinicalMessageSender")
+  clinicalMessagesReceived     ClinicalMessage[]         @relation("ClinicalMessageRecipient")
+  staffAnnouncementsCreated    StaffAnnouncement[]       @relation("StaffAnnouncementCreator")
+  staffAnnouncementReads       StaffAnnouncementRead[]
+  patientAccountTokens         PatientAccountToken[]
+  mobileSessions               MobileSession[]
+  patientPushDevices           PatientPushDevice[]
+
+  @@index([email])
+  @@index([role])
+  @@map("users")
+}
+
+enum PatientAccountTokenType {
+  ACTIVATION
+  PASSWORD_RESET
+}
+
+model PatientAccountToken {
+  id        String                  @id @default(cuid())
+  userId    String
+  user      User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      PatientAccountTokenType
+  tokenHash String                  @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime                @default(now())
+
+  @@index([userId, type, createdAt])
+  @@index([expiresAt])
+  @@map("patient_account_tokens")
+}
+
+model MobileSession {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  deviceName String?
+  userAgent  String?
+  ipAddress  String?
+  lastUsedAt DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, revokedAt, expiresAt])
+  @@index([expiresAt])
+  @@map("mobile_sessions")
+}
+
+model PatientPushDevice {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expoPushToken String   @unique
+  platform      String?
+  deviceName    String?
+  enabled       Boolean  @default(true)
+  lastSeenAt    DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId, enabled])
+  @@map("patient_push_devices")
+}
+
+// ============================================================
+// PATIENT MANAGEMENT
+// ============================================================
+
+enum BloodType {
+  A_POSITIVE
+  A_NEGATIVE
+  B_POSITIVE
+  B_NEGATIVE
+  AB_POSITIVE
+  AB_NEGATIVE
+  O_POSITIVE
+  O_NEGATIVE
+  UNKNOWN
+}
+
+model PatientProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Demographics
+  firstName   String
+  lastName    String
+  middleName  String?
+  dateOfBirth DateTime
+  gender      String // MALE, FEMALE, OTHER
+  phoneNumber String
+  address     String
+  city        String
+  state       String
+  zipCode     String
+
+  // Medical Information
+  bloodType         BloodType @default(UNKNOWN)
+  allergies         String? // JSON array of allergies
+  chronicConditions String? // JSON array of conditions
+
+  // Emergency Contact
+  emergencyContactName     String
+  emergencyContactPhone    String
+  emergencyContactRelation String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  rfidCards                  RfidCard[]
+  appointments               Appointment[]
+  appointmentWaitlistEntries AppointmentWaitlistEntry[]
+  appointmentBookingClaims   AppointmentBookingClaim[]
+  queueTickets               QueueTicket[]
+  medicalRecords             MedicalRecord[]
+  clinicalConversations      ClinicalConversation[]
+
+  @@index([userId])
+  @@index([lastName, firstName])
+  @@index([phoneNumber])
+  @@map("patient_profiles")
+}
+
+// ============================================================
+// RFID CARD MANAGEMENT
+// ============================================================
+
+enum RfidCardStatus {
+  ACTIVE
+  REVOKED
+  LOST
+  EXPIRED
+}
+
+model RfidCard {
+  id      String         @id @default(cuid())
+  cardUid String         @unique // Unique hexadecimal identifier (e.g., "A1B2C3D4")
+  status  RfidCardStatus @default(ACTIVE)
+
+  patientId String
+  patient   PatientProfile @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  issuedAt      DateTime  @default(now())
+  expiresAt     DateTime?
+  revokedAt     DateTime?
+  revokedReason String?
+
+  lastScannedAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([cardUid])
+  @@index([patientId])
+  @@index([status])
+  @@map("rfid_cards")
+}
+
+// ============================================================
+// DOCTOR MANAGEMENT
+// ============================================================
+
+model DoctorProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  firstName      String
+  lastName       String
+  specialization String // e.g., "Cardiology", "Pediatrics", "General Medicine"
+  licenseNumber  String  @unique
+  roomNumber     String? // Consultation room assignment
+
+  isActive      Boolean @default(true)
+  availableFrom String? // Time in HH:mm format, e.g., "09:00"
+  availableTo   String? // Time in HH:mm format, e.g., "17:00"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  appointments               Appointment[]
+  appointmentWaitlistEntries AppointmentWaitlistEntry[]
+  queueTickets               QueueTicket[]
+  schedule                   DoctorSchedule?
+  scheduleExceptions         DoctorScheduleException[]
+  leaveRequests              DoctorLeaveRequest[]
+  clinicalConversations      ClinicalConversation[]
+
+  @@index([userId])
+  @@index([specialization])
+  @@index([isActive])
+  @@map("doctor_profiles")
+}
+
+enum ScheduleExceptionType {
+  LEAVE
+  HOLIDAY
+  UNAVAILABLE
+}
+
+model DoctorSchedule {
+  id                String        @id @default(cuid())
+  doctorId          String        @unique
+  doctor            DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  slotDuration      Int           @default(30)
+  maxPatientsPerDay Int           @default(20)
+  bufferMinutes     Int           @default(0)
+  timezone          String        @default("Asia/Manila")
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  weeklyAvailability DoctorWeeklyAvailability[]
+
+  @@index([doctorId])
+  @@map("doctor_schedules")
+}
+
+model DoctorWeeklyAvailability {
+  id         String         @id @default(cuid())
+  scheduleId String
+  schedule   DoctorSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  dayOfWeek  Int
+  enabled    Boolean        @default(true)
+  startTime  String
+  endTime    String
+  breakStart String?
+  breakEnd   String?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@unique([scheduleId, dayOfWeek])
+  @@index([scheduleId])
+  @@map("doctor_weekly_availability")
+}
+
+model DoctorScheduleException {
+  id        String                @id @default(cuid())
+  doctorId  String
+  doctor    DoctorProfile         @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  date      DateTime              @db.Date
+  type      ScheduleExceptionType
+  startTime String?
+  endTime   String?
+  reason    String?
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+
+  @@index([doctorId, date])
+  @@map("doctor_schedule_exceptions")
+}
+
+model DoctorLeaveRequest {
+  id          String        @id @default(cuid())
+  doctorId    String
+  doctor      DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  date        DateTime      @db.Date
+  message     String
+  status      String        @default("PENDING")
+  adminReply  String?
+  exceptionId String?
+  createdAt   DateTime      @default(now())
+  reviewedAt  DateTime?
+
+  @@index([doctorId, date])
+  @@index([status, createdAt])
+  @@map("doctor_leave_requests")
+}
+
+// ============================================================
+// STAFF MANAGEMENT (Nurses, Receptionists, Administrative Staff)
+// ============================================================
+
+model StaffProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  firstName     String
+  lastName      String
+  specialty     String? // e.g. "Triage / Vital Signs", "Pediatrics Nurse", "Front Desk Registration", "Admissions & Billing"
+  roomNumber    String? // e.g. "Triage Station 1", "Counter 1", "Front Desk Desk A", "Vital Signs Booth"
+  phoneNumber   String?
+  licenseNumber String? // e.g. PRC RN-0123456 for registered nurses
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("staff_profiles")
+}
+
+// ============================================================
+// APPOINTMENT MANAGEMENT
+// ============================================================
+
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  CHECKED_IN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum AppointmentWaitlistStatus {
+  WAITING
+  OFFERED
+  BOOKED
+  CANCELLED
+  EXPIRED
+}
+
+enum AppointmentReminderStatus {
+  PENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+model Appointment {
+  id String @id @default(cuid())
+
+  patientId String
+  patient   PatientProfile @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  doctorId String
+  doctor   DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  appointmentDate DateTime // Date and time of appointment
+  duration        Int      @default(30) // Duration in minutes
+
+  status         AppointmentStatus @default(SCHEDULED)
+  reasonForVisit String
+  notes          String?
+
+  createdById String
+  createdBy   User   @relation("CreatedByUser", fields: [createdById], references: [id])
+
+  confirmedAt               DateTime?
+  patientConfirmedAt        DateTime?
+  patientConfirmationSource String?
+  checkedInAt               DateTime?
+  completedAt               DateTime?
+  cancelledAt               DateTime?
+  cancellationReason        String?
+  cancelledByRole           String?
+  cancellationPolicyResult  String?
+  noShowMarkedAt            DateTime?
+  noShowMarkedBy            String?
+
+  rescheduledFromId String?      @unique
+  rescheduledFrom   Appointment? @relation("AppointmentReschedules", fields: [rescheduledFromId], references: [id], onDelete: SetNull)
+  rescheduledTo     Appointment? @relation("AppointmentReschedules")
+
+  followUpFromRecordId String?
+  followUpFromRecord   MedicalRecord? @relation("MedicalRecordFollowUps", fields: [followUpFromRecordId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  queueTicket     QueueTicket?
+  medicalRecords  MedicalRecord[]
+  reminders       AppointmentReminder[]
+  bookingClaim    AppointmentBookingClaim?
+  waitlistBooking AppointmentWaitlistEntry?
+
+  @@unique([doctorId, appointmentDate])
+  @@index([patientId])
+  @@index([doctorId])
+  @@index([appointmentDate])
+  @@index([status])
+  @@index([rescheduledFromId])
+  @@index([followUpFromRecordId])
+  @@index([appointmentDate, doctorId])
+  @@map("appointments")
+}
+
+model AppointmentWaitlistEntry {
+  id String @id @default(cuid())
+
+  patientId String
+  patient   PatientProfile @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId  String
+  doctor    DoctorProfile  @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  requestedDate  DateTime                  @db.Date
+  reasonForVisit String
+  notes          String?
+  status         AppointmentWaitlistStatus @default(WAITING)
+  offeredAt      DateTime?
+  offerExpiresAt DateTime?
+  offeredSlot    DateTime?
+
+  bookedAppointmentId String?      @unique
+  bookedAppointment   Appointment? @relation(fields: [bookedAppointmentId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([doctorId, requestedDate, status])
+  @@index([patientId, status])
+  @@map("appointment_waitlist_entries")
+}
+
+model AppointmentReminder {
+  id              String                    @id @default(cuid())
+  appointmentId   String
+  appointment     Appointment               @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  reminderType    String
+  scheduledFor    DateTime
+  status          AppointmentReminderStatus @default(PENDING)
+  deliveryChannel String                    @default("IN_APP")
+  sentAt          DateTime?
+  lastError       String?
+  dedupeKey       String                    @unique
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+
+  @@index([status, scheduledFor])
+  @@index([appointmentId])
+  @@map("appointment_reminders")
+}
+
+model AppointmentBookingClaim {
+  id            String         @id @default(cuid())
+  appointmentId String         @unique
+  appointment   Appointment    @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  patientId     String
+  patient       PatientProfile @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  tokenHash     String         @unique
+  expiresAt     DateTime
+  claimedAt     DateTime?
+  claimedEmail  String?
+  createdAt     DateTime       @default(now())
+
+  @@index([patientId, claimedAt])
+  @@index([expiresAt])
+  @@map("appointment_booking_claims")
+}
+
+// ============================================================
+// QUEUE MANAGEMENT
+// ============================================================
+
+enum QueueStatus {
+  WAITING
+  CALLED
+  IN_CONSULTATION
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+model QueueTicket {
+  id String @id @default(cuid())
+
+  queueNumber Int // Daily auto-incrementing number
+  queueDate   DateTime @default(now()) @db.Date // Date component only
+
+  patientId String
+  patient   PatientProfile @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  doctorId String
+  doctor   DoctorProfile @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  appointmentId String?      @unique
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  status   QueueStatus @default(WAITING)
+  priority Int         @default(0) // Higher number = higher priority (for emergencies)
+  station  String? // e.g., "Consultation Room 1"
+
+  calledAt    DateTime?
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  estimatedWaitMinutes Int?
+
+  clinicalConversation ClinicalConversation?
+  medicalRecords       MedicalRecord[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([queueDate, queueNumber])
+  @@index([patientId])
+  @@index([doctorId])
+  @@index([queueDate, status])
+  @@index([status])
+  @@map("queue_tickets")
+}
+
+// ============================================================
+// MEDICAL RECORDS (SOAP Notes)
+// ============================================================
+
+enum MedicalRecordStatus {
+  DRAFT
+  FINALIZED
+  AMENDED
+}
+
+model MedicalRecord {
+  id String @id @default(cuid())
+
+  patientId String
+  patient   PatientProfile @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  doctorId String
+  doctor   User   @relation("DoctorRecords", fields: [doctorId], references: [id])
+
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  queueTicketId String?
+  queueTicket   QueueTicket? @relation(fields: [queueTicketId], references: [id], onDelete: SetNull)
+
+  visitDate DateTime @default(now())
+
+  // SOAP Notes
+  subjective String // Chief complaint, patient's description
+  objective  String // Physical examination findings
+  assessment String // Diagnosis or clinical impression
+  plan       String // Treatment plan, recommendations
+
+  // Vitals (stored as JSONB for flexibility)
+  vitals Json? // { "temperature": 37.5, "bloodPressure": "120/80", "heartRate": 72, "weight": 70, "height": 170 }
+
+  followUpDate  DateTime?
+  followUpNotes String?
+
+  status          MedicalRecordStatus @default(DRAFT)
+  version         Int                 @default(1)
+  parentRecordId  String?
+  parentRecord    MedicalRecord?      @relation("MedicalRecordVersions", fields: [parentRecordId], references: [id], onDelete: Restrict)
+  amendments      MedicalRecord[]     @relation("MedicalRecordVersions")
+  amendmentReason String?
+
+  finalizedAt     DateTime?
+  finalizedById   String?
+  finalizedBy     User?     @relation("FinalizedMedicalRecords", fields: [finalizedById], references: [id], onDelete: Restrict)
+  finalizedByName String?
+  contentHash     String?   @unique
+
+  archivedAt    DateTime?
+  archivedById  String?
+  archivedBy    User?     @relation("ArchivedMedicalRecords", fields: [archivedById], references: [id], onDelete: Restrict)
+  archiveReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  prescriptions        Prescription[]
+  attachments          MedicalRecordAttachment[]
+  followUpAppointments Appointment[]             @relation("MedicalRecordFollowUps")
+
+  @@index([patientId])
+  @@index([doctorId])
+  @@index([visitDate])
+  @@index([appointmentId])
+  @@index([queueTicketId])
+  @@index([status, archivedAt])
+  @@index([parentRecordId])
+  @@index([finalizedAt])
+  @@map("medical_records")
+}
+
+model MedicalRecordAttachment {
+  id              String        @id @default(cuid())
+  medicalRecordId String
+  medicalRecord   MedicalRecord @relation(fields: [medicalRecordId], references: [id], onDelete: Restrict)
+  fileName        String
+  mimeType        String
+  fileSize        Int
+  checksum        String
+  data            Bytes
+  uploadedById    String
+  uploadedBy      User          @relation("MedicalRecordAttachmentUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  archivedAt      DateTime?
+  archiveReason   String?
+  createdAt       DateTime      @default(now())
+
+  @@index([medicalRecordId, archivedAt])
+  @@index([checksum])
+  @@map("medical_record_attachments")
+}
+
+// ============================================================
+// PRESCRIPTION MANAGEMENT
+// ============================================================
+
+model Prescription {
+  id String @id @default(cuid())
+
+  medicalRecordId String
+  medicalRecord   MedicalRecord @relation(fields: [medicalRecordId], references: [id], onDelete: Cascade)
+
+  doctorId String
+  doctor   User   @relation("PrescribedByDoctor", fields: [doctorId], references: [id])
+
+  medicationName String
+  dosage         String // e.g., "500mg"
+  frequency      String // e.g., "Twice daily", "Every 8 hours"
+  duration       String // e.g., "7 days", "2 weeks"
+  instructions   String? // Additional instructions
+  quantity       Int? // Total quantity prescribed
+
+  prescribedDate DateTime  @default(now())
+  startDate      DateTime  @default(now())
+  endDate        DateTime?
+
+  isActive Boolean @default(true)
+
+  // Immutable e-signature audit trail captured when the prescription is issued.
+  eSignedAt         DateTime?
+  eSignatureName    String?
+  eSignatureLicense String?
+  eSignatureHash    String?   @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([medicalRecordId])
+  @@index([doctorId])
+  @@index([prescribedDate])
+  @@index([eSignedAt])
+  @@map("prescriptions")
+}
+
+// ============================================================
+// SYSTEM & ADMIN NOTIFICATIONS
+// ============================================================
+
+model ClinicSettings {
+  id                                 String   @id @default("default")
+  clinicName                         String   @default("Laguna Medical Center")
+  shortName                          String   @default("LMC")
+  hotline                            String   @default("(049) 545-8888")
+  address                            String   @default("Santa Cruz, Laguna, Philippines")
+  emergencyNotice                    String   @default("For emergencies, call 911 or visit the nearest hospital.")
+  queueResetTime                     String   @default("00:00")
+  queuePrefixes                      Json
+  timezone                           String   @default("Asia/Manila")
+  operatingDays                      Json     @default("[1,2,3,4,5,6]")
+  holidayDates                       Json     @default("[]")
+  appointmentLeadTimeHours           Int      @default(2)
+  bookingHorizonDays                 Int      @default(60)
+  appointmentCancellationNoticeHours Int      @default(24)
+  appointmentNoShowGraceMinutes      Int      @default(30)
+  appointmentReminderLeadHours       Json     @default("[24,2]")
+  triagePriorityRules                Json     @default("{\"resuscitation\":{\"painScore\":9,\"oxygenSaturationBelow\":90},\"urgent\":{\"painScore\":7,\"temperatureAtLeast\":39,\"systolicAtLeast\":180},\"priority\":{\"seniorAge\":60,\"painScore\":5}}")
+  notificationRetentionDays          Int      @default(90)
+  updatedById                        String?
+  createdAt                          DateTime @default(now())
+  updatedAt                          DateTime @updatedAt
+
+  @@map("clinic_settings")
+}
+
+model AdminNotification {
+  id             String    @id @default(cuid())
+  type           String    @default("info") // "info" | "success" | "warning" | "error"
+  category       String    @default("STAFF_LOGIN") // "STAFF_LOGIN", "SYSTEM", etc.
+  title          String
+  message        String
+  staffName      String?
+  staffEmail     String?
+  staffRole      String?
+  staffSpecialty String?
+  staffRoom      String?
+  metadata       Json?
+  isRead         Boolean   @default(false)
+  readAt         DateTime?
+  expiresAt      DateTime?
+  archivedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([isRead])
+  @@index([readAt])
+  @@index([expiresAt])
+  @@index([archivedAt])
+  @@index([createdAt])
+  @@map("admin_notifications")
+}
+
+enum EmailDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  SIMULATED
+}
+
+model EmailDelivery {
+  id            String              @id @default(cuid())
+  recipient     String
+  subject       String
+  template      String
+  status        EmailDeliveryStatus @default(PENDING)
+  provider      String?
+  messageId     String?
+  attempts      Int                 @default(0)
+  maxAttempts   Int                 @default(3)
+  nextAttemptAt DateTime?
+  lastAttemptAt DateTime?
+  sentAt        DateTime?
+  lastError     String?
+  payload       Json?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([recipient, createdAt])
+  @@index([createdAt])
+  @@map("email_deliveries")
+}
+
+model SystemAuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actorEmail String?
+  actorRole  String?
+  action     String
+  targetType String
+  targetId   String?
+  summary    String
+  ipAddress  String?
+  userAgent  String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([action, createdAt])
+  @@index([actorId, createdAt])
+  @@index([targetType, targetId])
+  @@map("system_audit_logs")
+}
+
+// ============================================================
+// CLINICAL HANDOFFS & STAFF ANNOUNCEMENTS
+// ============================================================
+
+model ClinicalConversation {
+  id            String            @id @default(cuid())
+  queueTicketId String            @unique
+  queueTicket   QueueTicket       @relation(fields: [queueTicketId], references: [id], onDelete: Cascade)
+  patientId     String
+  patient       PatientProfile    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId      String
+  doctor        DoctorProfile     @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  createdById   String?
+  createdBy     User?             @relation("ClinicalConversationCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  status        String            @default("OPEN")
+  resolvedAt    DateTime?
+  resolvedById  String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  messages      ClinicalMessage[]
+
+  @@index([doctorId, status])
+  @@index([createdById, status])
+  @@index([updatedAt])
+  @@map("clinical_conversations")
+}
+
+model ClinicalMessage {
+  id             String               @id @default(cuid())
+  conversationId String
+  conversation   ClinicalConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String?
+  sender         User?                @relation("ClinicalMessageSender", fields: [senderId], references: [id], onDelete: SetNull)
+  recipientId    String?
+  recipient      User?                @relation("ClinicalMessageRecipient", fields: [recipientId], references: [id], onDelete: SetNull)
+  senderName     String
+  senderRole     String
+  recipientRole  String
+  body           String
+  priority       String               @default("ROUTINE")
+  readAt         DateTime?
+  acknowledgedAt DateTime?
+  createdAt      DateTime             @default(now())
+
+  @@index([conversationId, createdAt])
+  @@index([recipientId, readAt])
+  @@map("clinical_messages")
+}
+
+model StaffAnnouncement {
+  id          String                  @id @default(cuid())
+  createdById String?
+  createdBy   User?                   @relation("StaffAnnouncementCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  creatorName String
+  targetRole  String                  @default("ALL_STAFF")
+  title       String
+  body        String
+  priority    String                  @default("ROUTINE")
+  createdAt   DateTime                @default(now())
+  reads       StaffAnnouncementRead[]
+
+  @@index([targetRole, createdAt])
+  @@map("staff_announcements")
+}
+
+model StaffAnnouncementRead {
+  id             String            @id @default(cuid())
+  announcementId String
+  announcement   StaffAnnouncement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  readAt         DateTime          @default(now())
+
+  @@unique([announcementId, userId])
+  @@index([userId, readAt])
+  @@map("staff_announcement_reads")
+}
+
+// ============================================================
+// TRIAGE ASSESSMENT & CLINICAL ROUTING
+// ============================================================
+
+model TriageAssessment {
+  id           String  @id @default(cuid())
+  triageNumber String  @unique // e.g. "TRG-20260924-001"
+  patientId    String?
+  patientName  String
+  age          Int?
+  gender       String? // "MALE", "FEMALE"
+  cardUid      String?
+
+  // Vital Signs
+  bloodPressure    String? // e.g. "120/80"
+  heartRate        String? // e.g. "78"
+  temperature      String? // e.g. "36.8"
+  respiratoryRate  String? // e.g. "18"
+  oxygenSaturation String? // e.g. "98"
+  weightKg         String? // e.g. "62"
+  heightCm         String? // e.g. "165"
+  bmi              String? // e.g. "22.8"
+
+  // Clinical Chief Complaint & Assessment
+  chiefComplaint   String
+  symptomsDuration String? // e.g. "3 days", "1 week"
+  painScore        Int     @default(0) // 0-10 pain scale
+
+  // Routing
+  department    String // "OB_GYN", "PEDIATRICS", "INTERNAL_MEDICINE", "SURGERY", "EENT"
+  priorityLevel String @default("STANDARD") // "RESUSCITATION", "URGENT", "PRIORITY", "STANDARD"
+
+  nurseId          String?
+  nurseName        String?
+  status           String  @default("PENDING_OPD") // "PENDING_OPD", "OPD_PROCESSED", "COMPLETED"
+  opdQueueTicketId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([patientId])
+  @@map("triage_assessments")
+}

@@ -2,8 +2,9 @@
 // Database Schema with RFID Integration
 
 generator client {
-  provider = "prisma-client-js"
-  output   = "../generated/client-queue"
+  provider      = "prisma-client-js"
+  output        = "../generated/client-queue"
+  binaryTargets = ["native", "rhel-openssl-3.0.x", "debian-openssl-3.0.x"]
 }
 
 datasource db {
