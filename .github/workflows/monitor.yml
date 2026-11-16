@@ -1,0 +1,36 @@
+name: Production dependency monitor
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-dependency-monitor
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    env:
+      PUBLIC_BASE_URL: ${{ vars.PUBLIC_BASE_URL }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+    steps:
+      - name: Run application database and email monitor
+        run: |
+          test -n "$PUBLIC_BASE_URL"
+          test -n "$CRON_SECRET"
+          curl --fail --silent --show-error --max-time 30 --request POST --header "Authorization: Bearer $CRON_SECRET" "$PUBLIC_BASE_URL/api/operations/monitor"
+      - name: Alert when the application cannot report
+        if: failure()
+        env:
+          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+        run: |
+          if [ -n "$ALERT_WEBHOOK_URL" ]; then
+            curl --fail --silent --show-error -H 'Content-Type: application/json' -d '{"event":"application_monitor_failed","service":"application","status":"down","environment":"production"}' "$ALERT_WEBHOOK_URL"
+          fi

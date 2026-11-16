@@ -1,0 +1,48 @@
+{
+  "name": "clinic-management-system",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "npm@11.13.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "npm run build --workspace=@clinic/web && npm run build --workspace=@clinic/mobile",
+    "lint": "npm run lint --workspace=@clinic/web && npm run lint --workspace=@clinic/mobile",
+    "test:security": "node --test apps/web/tests/api-authorization.test.js",
+    "test:policy": "node --experimental-strip-types --test apps/web/tests/access-policy.test.ts",
+    "test:scheduling": "node --experimental-strip-types --test apps/web/tests/scheduling.test.ts",
+    "test:settings": "node --experimental-strip-types --test apps/web/tests/clinic-settings.test.ts",
+    "test:operations": "node --experimental-strip-types --test apps/web/tests/operations-utils.test.ts",
+    "test:audit": "node --test apps/web/tests/audit-coverage.test.js",
+    "test:patient-mobile": "node --test apps/web/tests/patient-mobile-coverage.test.js",
+    "test:medical-record-lifecycle": "node --test apps/web/tests/medical-record-lifecycle.test.js",
+    "test:medical-record-db": "node scripts/verify-medical-record-db.js",
+    "test:appointment-lifecycle": "node --test apps/web/tests/appointment-lifecycle.test.js",
+    "test:appointment-lifecycle-db": "node scripts/verify-appointment-lifecycle-db.js",
+    "test:queue-lifecycle": "node --experimental-strip-types --test apps/web/tests/queue-lifecycle.test.ts",
+    "test:queue-lifecycle-db": "node scripts/verify-queue-lifecycle-db.js",
+    "test:security-hardening": "node --test apps/web/tests/security-hardening.test.js",
+    "test:production-operations": "node --test apps/web/tests/production-operations.test.js",
+    "test:patient-master-index": "node --test apps/web/tests/patient-master-index.test.js",
+    "test:ci": "npm run test:policy && npm run test:scheduling && npm run test:settings && npm run test:operations && npm run test:audit && npm run test:patient-mobile && npm run test:medical-record-lifecycle && npm run test:appointment-lifecycle && npm run test:queue-lifecycle && npm run test:security-hardening && npm run test:production-operations && npm run test:patient-master-index",
+    "typecheck": "npx tsc --noEmit -p apps/web/tsconfig.json && npx tsc --noEmit -p apps/mobile/tsconfig.json",
+    "clean": "turbo run clean",
+    "db:generate": "turbo run db:generate",
+    "db:push": "turbo run db:push",
+    "db:seed": "turbo run db:seed",
+    "db:studio": "cd packages/db && npm run studio",
+    "mobile": "expo start apps/mobile"
+  },
+  "devDependencies": {
+    "docx": "^9.8.1",
+    "turbo": "^2.0.0",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}

@@ -1,0 +1,59 @@
+name: Deploy clinic application
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Deployment environment
+        required: true
+        default: staging
+        type: choice
+        options: [staging, production]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: ${{ inputs.environment }}
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      BACKUP_S3_URI: ${{ secrets.BACKUP_S3_URI }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ vars.BACKUP_AWS_REGION || 'ap-southeast-1' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run db:generate
+      - name: Enforce production recovery gates
+        if: inputs.environment == 'production'
+        run: bash scripts/operations/check-release-gates.sh
+      - name: Validate migration history
+        run: npx prisma migrate status --schema packages/db/prisma/schema.prisma
+      - name: Apply additive migrations
+        run: npx prisma migrate deploy --schema packages/db/prisma/schema.prisma
+      - name: Trigger provider deployment
+        env:
+          DEPLOY_HOOK_URL: ${{ secrets.DEPLOY_HOOK_URL }}
+        run: test -n "$DEPLOY_HOOK_URL" && curl --fail --silent --show-error --request POST "$DEPLOY_HOOK_URL"
+      - name: Verify readiness
+        env:
+          PUBLIC_BASE_URL: ${{ vars.PUBLIC_BASE_URL }}
+        run: |
+          test -n "$PUBLIC_BASE_URL"
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error "$PUBLIC_BASE_URL/ready"; then exit 0; fi
+            sleep 10
+          done
+          exit 1

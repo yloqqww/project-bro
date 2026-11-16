@@ -1,0 +1,73 @@
+name: Production backup restore rehearsal
+
+on:
+  schedule:
+    - cron: '23 19 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-restore-rehearsal
+  cancel-in-progress: false
+
+jobs:
+  rehearse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: staging
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: rehearsal-password
+          POSTGRES_DB: clinic_rehearsal
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d clinic_rehearsal"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      RESTORE_DATABASE_URL: postgresql://postgres:rehearsal-password@127.0.0.1:5432/clinic_rehearsal
+      ALLOW_RESTORE_REHEARSAL: 'true'
+      RESTORE_REHEARSAL_RESULT_PATH: restore-rehearsal-result.json
+      BACKUP_ENCRYPTION_PASSPHRASE: ${{ secrets.BACKUP_ENCRYPTION_PASSPHRASE }}
+      BACKUP_S3_URI: ${{ secrets.BACKUP_S3_URI }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ vars.BACKUP_AWS_REGION || 'ap-southeast-1' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Restore and reconcile row counts
+        run: bash scripts/operations/restore-rehearsal.sh
+      - name: Install application dependencies
+        run: npm ci
+      - name: Validate schema against the restored database
+        env:
+          DATABASE_URL: ${{ env.RESTORE_DATABASE_URL }}
+        run: |
+          npm run db:generate
+          npx prisma validate --schema packages/db/prisma/schema.prisma
+          npm run test:medical-record-db
+          npm run test:appointment-lifecycle-db
+          npm run test:queue-lifecycle-db
+      - name: Publish successful rehearsal evidence
+        run: aws s3 cp "$RESTORE_REHEARSAL_RESULT_PATH" "${BACKUP_S3_URI%/}/latest-restore-rehearsal.json" --content-type application/json --only-show-errors
+      - name: Alert on failure
+        if: failure()
+        env:
+          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+        run: |
+          if [ -n "$ALERT_WEBHOOK_URL" ]; then
+            curl --fail --silent --show-error -H 'Content-Type: application/json' -d '{"event":"restore_rehearsal_failed","service":"backup","status":"degraded","environment":"staging"}' "$ALERT_WEBHOOK_URL"
+          fi

@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "Laguna Medical Center Patient App",
+    "slug": "laguna-medical-center-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.lagunamedical.mobile"
+    },
+    "android": {
+      "package": "com.lagunamedical.mobile"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-notifications"
+    ],
+    "scheme": "lagunamedical"
+  }
+}
