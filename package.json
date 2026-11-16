@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "dev": "turbo run dev",
-    "build": "npm run build --workspace=@clinic/web && npm run build --workspace=@clinic/mobile",
+    "build": "npm run build --workspace=@clinic/web",
     "lint": "npm run lint --workspace=@clinic/web && npm run lint --workspace=@clinic/mobile",
     "test:security": "node --test apps/web/tests/api-authorization.test.js",
     "test:policy": "node --experimental-strip-types --test apps/web/tests/access-policy.test.ts",
