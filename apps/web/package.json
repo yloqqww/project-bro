@@ -10,8 +10,8 @@
     "clean": "rm -rf .next .turbo node_modules"
   },
   "dependencies": {
-    "@clinic/db": "*",
-    "@clinic/types": "*",
+    "@clinic/db": "file:../../packages/db",
+    "@clinic/types": "file:../../packages/types",
     "@hookform/resolvers": "^5.9.1",
     "bcryptjs": "^3.0.3",
     "lucide-react": "^1.39.0",
