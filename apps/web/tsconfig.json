@@ -26,6 +26,15 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@clinic/db": [
+        "./src/lib/db/index.ts"
+      ],
+      "@clinic/types": [
+        "./src/lib/types/index.ts"
+      ],
+      "@clinic/types/*": [
+        "./src/lib/types/*"
       ]
     }
   },

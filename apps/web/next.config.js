@@ -1,7 +1,16 @@
+const path = require('path');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  transpilePackages: ['@clinic/db', '@clinic/types'],
   serverExternalPackages: ['@prisma/client'],
+  webpack: (config) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@clinic/db': path.resolve(__dirname, 'src/lib/db/index.ts'),
+      '@clinic/types': path.resolve(__dirname, 'src/lib/types/index.ts'),
+    };
+    return config;
+  },
   // The Windows Documents folder intermittently blocks generated dev files.
   // `.next-dev-cache` is a local junction to a cache under LOCALAPPDATA.
   distDir: process.env.NEXT_DIST_DIR || (process.env.NODE_ENV === 'development' ? '.next-dev-cache' : '.next'),
