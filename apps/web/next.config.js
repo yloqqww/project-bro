@@ -3,6 +3,11 @@ const path = require('path');
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   serverExternalPackages: ['@prisma/client'],
+  experimental: {
+    outputFileTracingIncludes: {
+      '/**': ['./generated/client-queue/libquery_engine*'],
+    },
+  },
   webpack: (config) => {
     config.resolve.alias = {
       ...config.resolve.alias,
