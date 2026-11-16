@@ -847,7 +847,7 @@ const config = {
   },
   "relativeEnvPaths": {
     "rootEnvPath": null,
-    "schemaEnvPath": "../../../../.env"
+    "schemaEnvPath": "../../../../apps/web/.env"
   },
   "relativePath": "../../prisma",
   "clientVersion": "5.22.0",
@@ -875,8 +875,8 @@ const fs = require('fs')
 config.dirname = __dirname
 if (!fs.existsSync(path.join(__dirname, 'schema.prisma'))) {
   const alternativePaths = [
-    "packages/db/generated/client-queue",
-    "db/generated/client-queue",
+    "../../packages/db/generated/client-queue",
+    "../packages/db/generated/client-queue",
   ]
   
   const alternativePath = alternativePaths.find((altPath) => {
@@ -905,15 +905,15 @@ Object.assign(exports, Prisma)
 
 // file annotations for bundling tools to include these files
 path.join(__dirname, "query_engine-windows.dll.node");
-path.join(process.cwd(), "packages/db/generated/client-queue/query_engine-windows.dll.node")
+path.join(process.cwd(), "../../packages/db/generated/client-queue/query_engine-windows.dll.node")
 
 // file annotations for bundling tools to include these files
 path.join(__dirname, "libquery_engine-rhel-openssl-3.0.x.so.node");
-path.join(process.cwd(), "packages/db/generated/client-queue/libquery_engine-rhel-openssl-3.0.x.so.node")
+path.join(process.cwd(), "../../packages/db/generated/client-queue/libquery_engine-rhel-openssl-3.0.x.so.node")
 
 // file annotations for bundling tools to include these files
 path.join(__dirname, "libquery_engine-debian-openssl-3.0.x.so.node");
-path.join(process.cwd(), "packages/db/generated/client-queue/libquery_engine-debian-openssl-3.0.x.so.node")
+path.join(process.cwd(), "../../packages/db/generated/client-queue/libquery_engine-debian-openssl-3.0.x.so.node")
 // file annotations for bundling tools to include these files
 path.join(__dirname, "schema.prisma");
-path.join(process.cwd(), "packages/db/generated/client-queue/schema.prisma")
+path.join(process.cwd(), "../../packages/db/generated/client-queue/schema.prisma")
