@@ -13,8 +13,17 @@ export async function checkDatabaseHealth(database: any = prisma): Promise<Servi
   try {
     await database.$queryRaw`SELECT 1`;
     return { status: 'ok', latencyMs: Date.now() - startedAt, checkedAt: new Date().toISOString() };
-  } catch {
-    return { status: 'down', latencyMs: Date.now() - startedAt, checkedAt: new Date().toISOString() };
+  } catch (error: any) {
+    return {
+      status: 'down',
+      latencyMs: Date.now() - startedAt,
+      checkedAt: new Date().toISOString(),
+      details: {
+        error: error?.message || String(error),
+        code: error?.code || null,
+        name: error?.name || null,
+      },
+    };
   }
 }
 

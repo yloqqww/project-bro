@@ -875,6 +875,8 @@ const fs = require('fs')
 config.dirname = __dirname
 if (!fs.existsSync(path.join(__dirname, 'schema.prisma'))) {
   const alternativePaths = [
+    "generated/client-queue",
+    "apps/web/generated/client-queue",
     "../../packages/db/generated/client-queue",
     "../packages/db/generated/client-queue",
   ]

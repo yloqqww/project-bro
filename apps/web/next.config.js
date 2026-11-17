@@ -4,7 +4,7 @@ const path = require('path');
 const nextConfig = {
   serverExternalPackages: ['@prisma/client'],
   outputFileTracingIncludes: {
-    '/**': ['./generated/client-queue/libquery_engine*'],
+    '/**': ['./generated/client-queue/**/*'],
   },
   webpack: (config) => {
     config.resolve.alias = {
