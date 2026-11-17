@@ -3,10 +3,8 @@ const path = require('path');
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   serverExternalPackages: ['@prisma/client'],
-  experimental: {
-    outputFileTracingIncludes: {
-      '/**': ['./generated/client-queue/libquery_engine*'],
-    },
+  outputFileTracingIncludes: {
+    '/**': ['./generated/client-queue/libquery_engine*'],
   },
   webpack: (config) => {
     config.resolve.alias = {
@@ -16,9 +14,11 @@ const nextConfig = {
     };
     return config;
   },
-  // The Windows Documents folder intermittently blocks generated dev files.
-  // `.next-dev-cache` is a local junction to a cache under LOCALAPPDATA.
-  distDir: process.env.NEXT_DIST_DIR || (process.env.NODE_ENV === 'development' ? '.next-dev-cache' : '.next'),
+  ...(process.env.VERCEL
+    ? {}
+    : {
+        distDir: process.env.NEXT_DIST_DIR || (process.env.NODE_ENV === 'development' ? '.next-dev-cache' : '.next'),
+      }),
   async headers() {
     const isDevelopment = process.env.NODE_ENV === 'development';
     const scriptSources = ["'self'", "'unsafe-inline'", ...(isDevelopment ? ["'unsafe-eval'"] : [])].join(' ');
